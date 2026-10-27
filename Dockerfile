@@ -45,5 +45,5 @@ RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
  && llama-server --version
 
 WORKDIR /workspace
-EXPOSE 8080 11434 22
+EXPOSE 8080 11434 22 10000
 ENTRYPOINT ["/usr/local/bin/start.sh"]
