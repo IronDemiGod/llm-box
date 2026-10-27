@@ -1,39 +1,10 @@
-# llm-box: llama.cpp (CUDA, Blackwell sm_120) + Ollama + HF CLI + utilities
-# Build:  docker build -t <you>/llm-box:latest .
-# Pick a CUDA version your host driver supports (nvidia-smi "CUDA Version" >= this).
-ARG CUDA_VERSION=12.9.1
-ARG UBUNTU=ubuntu24.04
-
-############################ build stage ############################
-FROM nvidia/cuda:${CUDA_VERSION}-devel-${UBUNTU} AS build
-ARG LLAMA_REF=master
-ARG CUDA_ARCH=120
-ARG FA_ALL_QUANTS=ON
-
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      git cmake build-essential libcurl4-openssl-dev ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-RUN git clone --depth 1 --branch ${LLAMA_REF} https://github.com/ggml-org/llama.cpp .
-
-# No GPU is needed at build time; link against the CUDA driver stub.
-RUN cmake -B build \
-      -DGGML_CUDA=ON \
-      -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
-      -DGGML_CUDA_FA_ALL_QUANTS=${FA_ALL_QUANTS} \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DLLAMA_BUILD_TESTS=OFF \
-      -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined \
- && cmake --build build --config Release -j"$(nproc)" \
- && cmake --install build --prefix /opt/llama
-
-########################### runtime stage ###########################
-FROM nvidia/cuda:${CUDA_VERSION}-runtime-${UBUNTU}
+# llm-box: official prebuilt llama.cpp CUDA image + Ollama + HF CLI + utilities
+# Base: Ubuntu 24.04, CUDA 12.8, llama.cpp binaries in /app (Blackwell sm_120 included)
+FROM ghcr.io/ggml-org/llama.cpp:full-cuda
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PATH=/opt/llama/bin:${PATH} \
-    LD_LIBRARY_PATH=/opt/llama/lib:${LD_LIBRARY_PATH} \
+    PATH=/app:${PATH} \
+    LD_LIBRARY_PATH=/app:${LD_LIBRARY_PATH} \
     OLLAMA_MODELS=/workspace/ollama-models \
     OLLAMA_HOST=127.0.0.1:11434 \
     HF_HOME=/workspace/hf-cache \
@@ -50,10 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tmux screen nano vim less file tree jq \
       zstd xz-utils unzip zip ca-certificates \
       git python3 python3-pip python3-venv \
-      libcurl4 libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
-# Hugging Face CLI (with fast Xet downloads) + gguf tools
+# Hugging Face CLI (fast Xet downloads) + gguf tools
 RUN pip install --no-cache-dir --break-system-packages \
       "huggingface_hub[hf_xet,cli]" gguf
 
@@ -61,11 +31,10 @@ RUN pip install --no-cache-dir --break-system-packages \
 RUN curl -fsSL https://ollama.com/install.sh | sh || true \
  && command -v ollama
 
-# llama.cpp binaries + libs
-COPY --from=build /opt/llama /opt/llama
-
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh && mkdir -p /workspace
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
+ && chmod +x /usr/local/bin/start.sh \
+ && mkdir -p /workspace
 
 WORKDIR /workspace
 EXPOSE 8080 11434 22
