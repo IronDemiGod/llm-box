@@ -44,10 +44,14 @@ RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
  && mkdir -p /workspace \
  && llama-server --version
 
-# EcoHash overrides the entrypoint, so also start sshd (via start.sh) the first
-# time any interactive bash shell opens, e.g. the web terminal.
-RUN echo 'pgrep -x sshd >/dev/null || bash /usr/local/bin/start.sh true >/dev/null 2>&1' >> /etc/bash.bashrc
+# EcoHash's boot command runs a bare `/usr/sbin/sshd`, but only prepares
+# /run/sshd and host keys when OpenSSH is missing. Wrap sshd so it always
+# prepares them itself (host keys are generated per container, not baked in).
+RUN dpkg-divert --local --rename --add /usr/sbin/sshd \
+ && printf '#!/bin/sh\nmkdir -p /run/sshd\nssh-keygen -A >/dev/null 2>&1\nexec /usr/sbin/sshd.distrib "$@"\n' > /usr/sbin/sshd \
+ && chmod 755 /usr/sbin/sshd \
+ && /usr/sbin/sshd -t && rm -f /etc/ssh/ssh_host_*
 
 WORKDIR /workspace
-EXPOSE 8080 11434 22 10000
+EXPOSE 8080 11434 22
 ENTRYPOINT ["/usr/local/bin/start.sh"]
