@@ -44,6 +44,10 @@ RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
  && mkdir -p /workspace \
  && llama-server --version
 
+# EcoHash overrides the entrypoint, so also start sshd (via start.sh) the first
+# time any interactive bash shell opens, e.g. the web terminal.
+RUN echo 'pgrep -x sshd >/dev/null || bash /usr/local/bin/start.sh true >/dev/null 2>&1' >> /etc/bash.bashrc
+
 WORKDIR /workspace
 EXPOSE 8080 11434 22 10000
 ENTRYPOINT ["/usr/local/bin/start.sh"]
